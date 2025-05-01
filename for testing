@@ -1,0 +1,43 @@
+
+# Load necessary libraries
+library(tidyverse)
+
+# Load the dataset (replace 'your_file.csv' with your actual file path)
+df <- read.csv("your_file.csv")
+
+# View the first few rows
+head(df)
+
+# Get summary statistics
+summary(df)
+
+# Check data structure
+str(df)
+
+# Check for missing values
+colSums(is.na(df))
+
+# Plot a histogram for a numeric column (replace 'column_name')
+ggplot(df, aes(x = column_name)) +
+  geom_histogram(binwidth = 10, fill = "skyblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of column_name", x = "column_name", y = "Count")
+
+# Plot correlation matrix for numeric variables
+df_numeric <- select(df, where(is.numeric))
+cor_matrix <- cor(df_numeric, use = "complete.obs")
+print(cor_matrix)
+
+library(dplyr)
+
+# Inner join
+inner_join(df1, df2, by = "ID")
+
+# Left join
+left_join(df1, df2, by = "ID")
+
+# Right join
+right_join(df1, df2, by = "ID")
+
+# Full join
+full_join(df1, df2, by = "ID")

@@ -1,0 +1,509 @@
+# Econ 687 Spring, UMD 2025, Lecture 7
+# Recursion, Error Handling and Panel Data
+
+################################################################################
+#Setup
+################################# Setup ########################################
+packages <- c('e1071','mfx','stargazer','plm','lmtest','ggplot2', 'dplyr',
+              'patchwork','tidyverse','WDI','wooldridge','skimr','car','effects','rmarkdown',
+              'pracma','censReg','mfx','plm')
+#install:
+install.packages(setdiff(packages, rownames(installed.packages())))
+#load:
+invisible(lapply(packages, library, character.only = TRUE))
+
+#set working directory
+working.dir<-dirname(rstudioapi::getSourceEditorContext()$path)
+#function that returns the complete relative path to a file with the name filename
+mpath<-function(filename) return (paste(working.dir,"/",filename,sep=""))
+#data sets from wooldridge
+w.dsets<-c("ceosal1","wage1","crime1","crime2","crime4","gpa1","gpa2","mlb1","bwght",
+           "hprice2","attend","cps78_85","kielmc","wagepan")
+lapply(w.dsets,data,package="wooldridge")
+
+################################################################################
+#1 Recursion 
+# a recursion is a function that calls itself
+
+#myfunc<- function(a){
+# b<-1
+# prod<-b*a
+#  myfunc(b*a)
+# return(prod)
+#}
+
+#This may sound complicated, but is really simple. To solve a problem of type X
+#by writing a recursive function f()
+#i Break the original problem of type X into one or more smaller problems of type X
+#ii Within f(), call f() on each of the smaller problems
+#iii With f(), piece together the results of (2) to solve the original problem
+
+# 1.1 Calculating factorials
+# x!= x*(x-1)*(x-2)*(x-3)*(x-4)*...*1
+
+m.factorial<-function(x){
+  if (x>1){
+    return (x*m.factorial(x-1))
+  }
+  else
+    return(1)
+}
+
+# 1.2 Binary search algorithm
+# makes sense under 2 conditions: (1) the data structure must be sorted and (2)
+# access to any element of the data structure takes constant time
+sorted.data<-seq(1,100,2)
+val.to.find<-26
+bin.sa<-function(vec, value,start,stop){
+  #search failed:
+  print(paste("start:",start,"stop:",stop,sep=" "))
+  if(start>stop){return (-1)}
+  #find midpoint
+  midp<-(start+stop)/2
+  #compare midpoint to value
+  if(value==vec[midp]) return(midp)
+  #reduce input in half
+  if(value<vec[midp]){
+    return(bin.sa(vec,value,start,midp-1))
+  }
+  else{
+    return(bin.sa(vec,value,midp+1,stop))
+  }
+}
+bin.sa(sorted.data,val.to.find,1,100)
+val.to.find<-27
+bin.sa(sorted.data,val.to.find,1,100)
+
+#comments? suggestions for improvement?
+
+#1.3 A quicksort implementation
+#This is just for demonstration. R's function sort() does the same thing and is much
+#faster, because it is written in C
+
+qs<-function(x){
+  if(length(x)<=1) return(x)
+  pivot<-x[1]
+  therest<-x[-1]
+  sv1<-therest[therest<pivot]
+  sv2<-therest[therest>=pivot]
+  sv1<-qs(sv1)
+  sv2<-qs(sv2)
+  cat("sv1:",sv1)
+  cat("sv2:",sv2)
+  return(c(sv1,pivot,sv2))
+}
+#Note: with recursive functions you always need to have a condition that terminates
+#the execution at some point. Here this is done with length(x)<=1
+#execute with c(3,5,9,2)
+sorted<-qs(c(3,5,9,2))
+sorted
+
+#1.4 Extended Example: a Binary search tree (for home study)
+#routines to create trees and insert items into them. 
+#storage is a matrix, say, m, one row per node of the tree. if row i contains (u,v,w)
+#then node i stores the value w and has left and right links to rows u and v
+#Null links have the value NA
+
+#the tree is represented as a list (mat, next,inc) where mat is the matrix, nxt
+# is the next empty row to be used and inc is the number of rows of expansion to be 
+#allocated whenever the matrix becomes full
+
+#print sorted tree via in-order traversal
+printtree<- function(hdidx, tr){
+  left<-tr$mat[hdidx,1]
+  if (!is.na(left))printtree(left,tr)
+  print(tr$mat[hdidx,3]) #print root
+  right<-tr$mat[hdidx,2]
+  if(!is.na(right)) printtree(right,tr)
+}
+
+#initialize the storage matrix with initial stored value firstval
+newtree<-function(firstval,inc){
+  m<-matrix(rep(NA,inc*3),nrow=inc,ncol=3)
+  m[1,3]<-firstval
+  return(list(mat=m,nxt=2,inc=inc))
+}
+
+x<-newtree(8,3)
+x
+
+#function to insert a new value into the search tree
+#arguments: 
+#hdidx
+#x is the tree
+#newval is the new value to be inserted (numeric)
+ins <- function(hdidx,tr,newval) {
+  # which direction will this new node go, left or right?
+  dir <- if (newval <= tr$mat[hdidx,3]) 1 else 2
+  # if null link in that direction, place the new node here, otherwise
+  # recurse
+  if (is.na(tr$mat[hdidx,dir])) {
+    newidx <- tr$nxt # where new node goes
+    # check for room to add a new element
+    if (tr$nxt == nrow(tr$mat) + 1) {
+      tr$mat <-
+        rbind(tr$mat, matrix(rep(NA,tr$inc*3),nrow=tr$inc,ncol=3))
+    }
+    # insert new tree node
+    tr$mat[newidx,3] <- newval
+    # link to the new node
+    tr$mat[hdidx,dir] <- newidx
+    tr$nxt <- tr$nxt + 1  # ready for next insert
+    return(tr)
+  } else tr <- ins(tr$mat[hdidx,dir],tr,newval)
+}
+
+#In this function we start at the root of the tree. Then determine whether the 
+#value must go right or left (line 118). Then call the function again on the subtreee. 
+#Its not hard but some details are required: for example one has to expand the matrix
+#if one is runing out of space
+x<-newtree(8,3)
+x
+ins(1,x,5)
+x
+ins(1,x,6)
+x
+ins(1,x,2)
+x
+rm(x)
+################################################################################
+# Error Handling
+################################################################################
+
+#nested functions
+f<-function(y){
+  x<-3
+  h<-function(){
+    x<<-4
+  }
+  h()
+  return(x)
+}
+print(paste("x as returned by the function:",f(x),sep=""))
+#Here we use an error handling procedure (new! not introduced yet); necessary
+#for Rmarkdown
+tryCatch(
+  expr={print(paste("x in global env:", x,sep=""))
+  },
+  error=function(e){
+    cat(paste("There was an error message\n",e))
+  },
+  warning=function(w){
+    cat("There was a warning message\n",w)
+  },
+  finally={
+    #print("finally executed")
+  }
+)
+
+#Another example for error handling
+#We know that in a linear model we can derive the OLS estimators easily. They
+# are given by beta=(X'X)^-1 X'y
+# Sometimes we may not be able to compute this, because XX does not have full rank
+# Instead of letting it crash, let's write an error handling procedure
+X<-matrix(seq(1,25,1),nrow=5,ncol=5)
+#make it singular
+X[,2]<-X[,1]
+y<-c(10,15,5,2,1)
+
+tryCatch(
+  expr={fp<-solve(t(X)%*%X); sp<-t(X)%*%y; fp%*%sp
+  },
+  error=function(e){
+    cat(paste("Matrix X is singular:",e)); return(NA)
+  },
+  warning=function(w){
+    cat("There was a warning message\n",w); return(NULL)
+  },
+  finally={
+    print("Last message before exiting")
+  }
+)
+
+#the main advantage is that this does not halt the execution. A disadvantage is
+#that you do not know where the error has occurred. So you better indicate very
+#well which try and catch leads to an error!!
+
+################################################################################
+# 2 Pooling Cross Sections Across Time: Simple Panel data methods
+# Pooled cross sections consist of random samples from the same population at different
+# points in time. First we look at this type of data set how to use it for estimating
+# changes over time. Then we look at a special class estimators: difference in difference
+# estimators in order to identify causal effects.
+
+# Panel data resemble pooled cross sectional data in that we have observations at different
+# points in time. The key difference is that we observe the same cross-sectional units, for
+# example individuals or firms. This requires the organization of data in specific ways.
+
+# 2.1 Pooled cross sections
+# If we have random samples at different points in time, this increases the overall
+# sample size and thereby the precision. We can also study changes over time.
+#data is cps78_85 from wooldridge
+
+#Example 13.2 (Wooldrige)
+#Topic: Changes in the return to education and the gender wage gape
+#The estimation equation is
+#lwage=beta_0+delta0y85+beta1 educ+ delta1(y85*educ)+beta2 exper+beta3 exper^2/100
+#        +beta4 union +beta5 female +delta5(y85*female)+u
+
+# y85 is a dummy variable
+# beta_0 is intercept in 1978, beta_0+delta_0 in 1985
+# beta_1 is return to education in 1978, beta_1+delta_1 in 1985 etc
+
+summary(lm(lwage~y85*(educ+female)+exper+I(exper^2/100)+union,data=cps78_85))
+
+#Interpretation and key points:
+# what is the return to education in 1978 and 1985, did it increase or decrease? Significant?
+# what is the gender wage gap in 1978 vs. 1985. Test stable wage gape vs increasing wage gap 
+# (one sided test, alpha=0.05)
+
+# 2.2 Difference in differences
+#Wooldrige sec 13.2 discusses an important application for pooled cross sections
+#Difference in differences (DiD) estimators estimate the effect of a policy inter
+#vention (in the broadest sense) by comparing the change over time of an outcome
+#of interest between an affected and an unaffected group of observations.
+
+#In a regression framework, we regress the outcome of interest on a dummy variable
+#for the affected (treatment) group, a dummy indicating observations after the treatment
+#and an interaction term between both. The coefficient of this interaction term
+#can be a good estimator for the effects of interest, controlling for initial differences
+#between the groups and contemporaneous changes over time
+
+#Wooldrigde Example 13.3
+# Topic: Effect of a Garbage Incinerator's Location on house prices
+#data used: kielmc
+help(kielmc)
+# Interest: House prices and how much they are affected by the construction of a
+# new garbage incinerator
+
+# data about prices of houses sold in 1978 and 1981
+# Hypothesis: prices of houses close to the incinerator fall relative to houses
+# that are further away
+
+# (a) We start by estimating  a model for 1978
+#     we regress a dummy variable nearinc (near incinerator) on the price for the
+#     houses that were near the incinerator 1978,but before there were any rumors
+#     about the incinerator
+# (b) We repeat the regression for 1981 when the incinerator was already in construction
+
+coef(lm(rprice~nearinc,data=kielmc,subset=(year==1978)))
+
+coef(lm(rprice~nearinc,data=kielmc,subset=(year==1981)))
+
+
+# The regressions show that in 1981, the houses near the incinerator were 
+# cheaper by 30688,27. But this is not only due to the incinerator, because already
+# 1978 those houses were 18824,37 cheaper than the average. The difference between the 
+# coefficient is the DID estimator, i.e. 30688,27-18824,37=11.836,9
+
+# This can be done easier: we regress the outcome of interest on a dummy variable
+# for the affected group (treatment), a dummy indicating observations after the treatment
+# and an interaction effect
+#use library lmtest for joint regression including an interaction term
+lm(rprice~nearinc*y81, data=kielmc)
+coeftest(lm(rprice~nearinc*y81, data=kielmc))
+
+#the interaction term gives the DID. We get that the t-statistic is -1.59. Hence
+#for a one-sided test there is marginal significance
+
+#One can improve the DiD estimator by using a logarithmic specification. This is more
+# plausible since it implies a constant percentage effect on house values. We can also
+# add additional regressors, like age, age square, log of distance to interstate,
+# log land, log area, rooms and bathes
+
+res<-lm(lrprice~nearinc*y81+age+I(age^2)+log(intst)+log(area)+log(land)+rooms+baths,data=kielmc )
+summary(res)
+coeftest(res)
+
+# 2.3 Organizing Panel data
+# A panel data set includes several observations at different points in time t for the
+# same (or at least overlapping) set of cross-sectional units i. A simple pooled regression
+# model could look as follows
+
+# y_{it}=\beta_0+\beta_1 x_{it1}+\beta_2 x_{it2}+...+\beta_k x_{itk}+u_{it}
+
+# The double subscripts indicate values for individual (or cross sectional unit) i
+# at time t. One could estimate this by OLS and ignore the panel structure.
+# However, the assumption that the error terms are unrelated, is hard to justify.
+# The errors pick up individual traits that are correlated over time. So one needs 
+# a specific method
+
+# The package plm
+help("plm-package")
+#is a comprehensive collection of commands dealing with panel data. Similar to
+#specific data types for time series, it offers a data type name pdata.frame
+#This is a data frame with some special features. Suppose we have a dataframe mydf
+#It includes variable ivar indicating the cross sectional units and a variable
+#tvar indication time. Then we can create a pdata.frame as follows
+mypdf<-pdata.frame(mydf,index=c("ivar","tvar")) #just an illustration (mydf does not exist)
+
+#If the panel is balance, i.e the same number of observations T for each individual i
+#, i=1,...,n, and the observations are first sorted by i, then we can call
+mypdf<-pdata.frame(mydf,index=n) #just an illustration (as above)
+#here two new variables are created: id and time
+
+#Load crime2.dta from wooldridge
+head(crime2)
+help(crime2)
+#crime 2 is a balanced panel of 46 cities that are properly sorted
+crime2.p<-pdata.frame(crime2,index=46)
+pdim(crime2.p)
+#display the first six rows and some of the variables
+crime2.p[1:6,c("id","time","year","pop","crimes","crmrte","unem")]
+
+#Next dataset is crime4. Has data on 90 counties for seven years. The set includes
+# the index variables county and years which we use in the definition of pdata.frame
+crime4.p<-pdata.frame(crime4, index=c("county","year"))
+head(crime4.p)
+
+#Consider a panel data set with cross-sectional units (individuals) i=1....n
+#There are T_i observations for each individual i. The total number of observations
+#is N=\sum_{i=1}^n T_i. In the special case of a balance panel, all individuals
+#have the same T_i=T and N=n\times T. Individual averages are calculated using between,
+#which returns a vector of averages for each individual i=1....n (i.e. the vector
+#has length n). The command Between returns a vector of length N, where each individual
+#average is repeated n times. The transformation Within subtracts the individual mean
+#from observation x_{it}
+
+# There is a couple of functions designed for panel specific purposes
+# l=lag(x) lags the variable
+# d=diff(x) calculates the difference Delta: x_{it}-x_{it-1}
+# b=between(x) Between transformation bar{x}_i (length n): b_i=1/T_i \sum_{t=1}^T_i x_{it}
+# B=Between(x), Between transformation \bar{x}_i (length N): B_{it}=b_i
+# w=Within(x), Within transformation (demeaning): w_{it}=x_{it}-B_{it}
+
+#Note: lag(x) and diff(x) calculate the differences and lags for individuals
+#separately, so the first observation for each individual i is NA
+
+#generate the pdata.frame
+crime4.p<-pdata.frame(crime4,index=c("county","year"))
+head(crime4.p)
+#lag the variable crmrte
+crime4.p$cr.l<-lag(crime4.p$crmrte)
+crime4.p[,c("cr.l","crmrte")]
+#calculate the difference of the crime rate between years
+crime4.p$cr.d<-diff(crime4.p$crmrte)
+#calculate the individual averages and repeat it n times (i.e. use Between)
+crime4.p$cr.B<-Between(crime4.p$crmrte)
+#demean the individual crime rats
+crime4.p$cr.W<-Within(crime4.p$crmrte)
+#display a little bit of data
+crime4.p[1:16,c("county","year","crmrte","cr.l","cr.d","cr.B","cr.W")]
+
+# 3. First Difference Estimator
+#Wooldridge Sec 13.3-13.5 discusses the basic unobserved effects models and their
+#estimation by first differencing. Consider the model
+
+#y_{it}=\beta_0+\beta_1 x_{it1}+...+\beta_k x_{itk}+a_i+u_{it}, t=1...T, i=1...n
+
+#This differs from the previous equation, because it involves a constant, unob-
+#served effect a_i per individual. If this is correlated with one or more of the
+#regressors. We therefore cannot define an error term v_{it}=a_i+u_{it} and simply
+#estimate using OLS. The result will be biased estimators. This is problem is not
+#particular to panel data, but panel data is a possible remedy.
+
+#If we first difference the above equation:
+#
+#\Delta y_{it}=\beta_1 \Delta x_{it1}+...+\beta_k \Delta x_{itk}+\Delta u_{it}, t=2...T, i=1...n
+
+#where the difference is taken over time. The trick is that since a_i does not 
+#change over time, it disappears if we subtract t from t-1 for all observations.
+#
+#data: crime2, is balanced
+crime2.p<-pdata.frame(crime2,index=46)
+
+#calculate manually the difference for year and cmrte
+crime2.p$dyear<-diff(crime2.p$year)
+crime2.p$dcrmrte<-diff(crime2.p$crmrte)
+crime2.p$dunem<-diff(crime2.p$unem)
+
+#display some variables
+crime2.p[1:6,c("id","time","year","dyear","crmrte","dcrmrte","unem","dunem")]
+head(crime2.p)
+
+#we can now use a simple linear model to regress the differenced values on
+#each other
+
+coeftest(lm(dcrmrte~dunem,data=crime2.p))
+
+#Alternatively we can use the package plm, which does all by itself. The the command
+#plm works like lm applied to the original variables and makes the necessary trans-
+#formations itself. With the option model="pooling" on requires the pooled OLS
+#estimator, model="fd" requires the fixed difference estimator.
+
+coeftest(plm(crmrte~unem,data=crime2.p,model="fd"))
+
+#As expected, these numbers agree
+
+#3.1 Another example with first differences: Minimum wage
+minwage<-read.csv(mpath("cardkrueger_nj.csv"),as.is=TRUE,header=TRUE)
+x1<-cbind(minwage$SHEET,minwage$EMPFT,minwage$EMPPT,minwage$STATE,1)
+
+# A column with ones is added at the end. Sheet is the firm ID, 
+colnames(x1)<-c("SHEET","FT","PT","STATE","TIME")
+#fulltime, part time, state and the initial time period represented by the ones
+
+x1<-as.data.frame(x1,stringsAsFactors=FALSE)
+
+x1$SHEET<-as.numeric(as.character(x1$SHEET))
+
+#error in the dataset
+x1[x1$SHEET==407,]$SHEET<-c(4071,4072)
+
+#the second period of the data
+x2<-cbind(minwage$SHEET,minwage$EMPFT2,minwage$EMPPT2,minwage$STATE,2)
+colnames(x2)<-c("SHEET","FT","PT","STATE","TIME")
+x2<-as.data.frame(x2)
+x2$SHEET<-as.numeric(as.character(x2$SHEET))
+x2[x2$SHEET==407,]$SHEET<-c(4071,4072)
+#put the periods together
+x3<-rbind(x1,x2)
+colnames(x3)<-c("SHEET","FT","PT","STATE","TIME")
+x3$FT<-as.numeric(as.character(x3$FT))
+x3$PT<-as.numeric(as.character(x3$PT))
+
+#difference in difference estimates
+#the concern with just comparing employment in NJ before and after the min.
+#wage change is that other factors may have also changed between the two
+#time periods. Card and Krueger 1994 use a difference in difference to account
+#for the time effects. They argue that restaurants ins PY are not impacted by
+#the NJ law change. In addition, these restaurants are similar enough to the NJ
+#restaurants that other changes in the economy will be the same between the two states. 
+#The restaurants in NJ and PY will have the same "time effect"
+
+y <- rbind(x3$FT[x3$TIME==1] + x3$PT[x3$TIME==1],
+                         x3$FT[x3$TIME==2] + x3$PT[x3$TIME==2])
+index_na <- is.na(colSums(y))==0
+y1 <- y[,index_na]
+treat <- x3$STATE[x3$TIME==1]==1
+treat1 <- treat[index_na]
+
+
+f_did <- function(y,treat) {
+y1 <- y[1,]
+y2 <- y[2,]
+did <- matrix(NA,3,3)
+# creates the difference in difference matrix
+did[1,1] <- mean(y2[treat==1])
+# calculates the average outcomes for each
+did[2,1] <- mean(y1[treat==1])
+did[1,2] <- mean(y2[treat==0])
+did[2,2] <- mean(y1[treat==0])
+did[3,1] <- did[1,1] - did[2,1]
+# calculates the differences.
+did[3,2] <- did[1,2] - did[2,2]
+did[1,3] <- did[1,1] - did[1,2]
+did[2,3] <- did[2,1] - did[2,2]
+did[3,3] <- did[3,1] - did[3,2]
+row.names(did) <- c("Period 2", "Period 1", "Diff")
+colnames(did) <- c("Treated", "Not Treated", "Diff")
+return(did)
+}
+
+did2<-f_did(y1,treat1)
+did2
+
+#The results suggest that the minimum wage increase had no impact on the total
+#count of employees, both full and part time. In the table we actually see a very
+#small increase in employment before and after the law change. Meanwhile in PY
+#there is a slight decrease of employment 

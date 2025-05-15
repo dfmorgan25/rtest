@@ -1,0 +1,31 @@
+# Define the matrix A (5x5)
+A <- matrix(c(
+  27.5, 1,    1,   1, 1,
+  1,    28.5, 0,   0, 0,
+  1,    0,   50,   0, 0,
+  1,    0,    0,  35, 0,
+  1,    0,    0,   0, 0
+), nrow = 5, byrow = TRUE)
+
+# Define the right-hand side vector b
+b <- c(0, 0, 0, 0, 1)
+
+# Solve the system A⁻¹ * b
+solution_a <- solve(A, b)
+
+# Extract x and lambda
+x_a <- solution_a[1:4]
+lambda_a <- solution_a[5]
+
+# Print results
+cat("Solution for x1 to x4 (part a):\n")
+print(x_a)
+
+cat("\nLambda (part a):", lambda_a, "\n")
+
+# Check if the sum of xi is 1
+sum_x <- sum(x_a)
+cat("\nSum of x values:", sum_x, "\n")
+if (abs(sum_x - 1) > 1e-6) {
+  warning("The xi values do NOT sum to 1!")
+}

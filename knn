@@ -1,0 +1,81 @@
+install.packages("class")
+install.packages("caret")  # for data splitting and performance evaluation
+install.packages("e1071")  # required for caret functions
+
+# Load libraries
+library(class)
+library(caret)
+
+data(iris)
+
+# Normalize the numeric features
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+iris_norm <- as.data.frame(lapply(iris[, 1:4], normalize))
+
+# Add the Species column back
+iris_norm$Species <- iris$Species
+set.seed(123)  # For reproducibility
+
+# Create training (80%) and testing (20%) sets
+train_index <- createDataPartition(iris_norm$Species, p = 0.8, list = FALSE)
+train_data <- iris_norm[train_index, 1:4]
+train_labels <- iris_norm[train_index, 5]
+
+test_data <- iris_norm[-train_index, 1:4]
+test_labels <- iris_norm[-train_index, 5]
+
+# Load required packages
+library(class)
+library(caret)
+library(e1071)
+
+# Normalize function
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+# Prepare data
+data(iris)
+iris_norm <- as.data.frame(lapply(iris[, 1:4], normalize))
+iris_norm$Species <- iris$Species
+
+# Split into train and test
+set.seed(123)
+train_index <- createDataPartition(iris_norm$Species, p = 0.8, list = FALSE)
+train_data <- iris_norm[train_index, 1:4]
+train_labels <- iris_norm[train_index, 5]
+
+test_data <- iris_norm[-train_index, 1:4]
+test_labels <- iris_norm[-train_index, 5]
+
+# Loop through k = 1 to 20 and store accuracy
+accuracy_results <- data.frame(k = 1:20, accuracy = NA)
+
+for (k in 1:20) {
+  pred <- knn(train = train_data, test = test_data, cl = train_labels, k = k)
+  cm <- confusionMatrix(pred, test_labels)
+  accuracy_results$accuracy[k] <- cm$overall["Accuracy"]
+}
+
+# Show the results
+print(accuracy_results)
+
+# Optional: plot accuracy
+plot(accuracy_results$k, accuracy_results$accuracy, type = "b",
+     xlab = "Number of Neighbors (k)", ylab = "Accuracy",
+     main = "KNN Accuracy for k = 1 to 20")
+
+# Find the best k
+best_k <- accuracy_results$k[which.max(accuracy_results$accuracy)]
+
+# Rerun KNN with best k
+final_pred <- knn(train = train_data, test = test_data, cl = train_labels, k = best_k)
+
+# Generate confusion matrix
+final_cm <- confusionMatrix(final_pred, test_labels)
+
+# Print it
+print(final_cm)
